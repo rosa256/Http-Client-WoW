@@ -1,9 +1,14 @@
 package com.api.wow.auction.analysis;
 
+import com.api.wow.auction.analysis.models.AccessTokenData;
+import com.api.wow.auction.analysis.models.AuthenticationData;
 import com.api.wow.auction.analysis.pojos.accessToken.AccessToken;
 import com.api.wow.auction.analysis.pojos.auction.AuctionData;
 import com.api.wow.auction.analysis.pojos.realmData.RealmData;
+import com.api.wow.auction.analysis.repositories.AuthenticationRepository;
+import com.api.wow.auction.analysis.repositories.WowApiTokenRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -13,12 +18,23 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 @Component
 public class WowApiClient {
+
+    private AuthenticationRepository authRepository;
+    private WowApiTokenRepository accessTokenRepository;
+
+    @Autowired
+    public WowApiClient(AuthenticationRepository authenticationRepository, WowApiTokenRepository wowApiTokenRepository){
+        this.authRepository = authenticationRepository;
+        this.accessTokenRepository = wowApiTokenRepository;
+    }
 
     private HttpClient httpClient = HttpClient.newHttpClient();
     private static final String REALM_URI = "https://eu.api.blizzard.com/data/wow/realm/index";
@@ -27,14 +43,15 @@ public class WowApiClient {
     public String getToken() throws IOException, InterruptedException {
 
         Map<Object, Object> credentialsDataMap = new HashMap<>();
-        //TODO:START
-        credentialsDataMap.put("access_id", "<ID FROM DB>");
-        credentialsDataMap.put("access_secret", "<SECRET FROM DB>");
+        //TODO:START Getting Recent Record
+        AuthenticationData authenticationData = authRepository.findById(1).get();
         //TODO:END
+        credentialsDataMap.put("client_id", authenticationData.getClientId());
+        credentialsDataMap.put("client_secret", authenticationData.getClientSecret());
         credentialsDataMap.put("grant_type", "client_credentials");
 
         HttpRequest requestToken = HttpRequest.newBuilder()
-                .POST(ofFormData(credentialsDataMap))
+                .POST(ofFormEncodedData(credentialsDataMap))
                 .setHeader("accept", "application/json")
                 .setHeader("content-type", "application/x-www-form-urlencoded")
                 .uri(URI.create(TOKEN_URI))
@@ -45,10 +62,19 @@ public class WowApiClient {
         ObjectMapper objectMapper = new ObjectMapper();
         AccessToken accessToken = objectMapper.readValue(response.body(), AccessToken.class);
 
+        //TODO Start Mapping AccessToken to AccessTokenData
+        AccessTokenData accessTokenData = new AccessTokenData();
+        accessTokenData.setAccessToken(accessToken.getAccessToken());
+
+        //TODO: Time add 2 hours.
+        accessTokenData.setLastModified(new Timestamp(new Date().getTime()));
+        //TODO End
+
+        accessTokenRepository.save(accessTokenData);
         return accessToken.toString();
     }
 
-    private static HttpRequest.BodyPublisher ofFormData(Map<Object, Object> data) {
+    private static HttpRequest.BodyPublisher ofFormEncodedData(Map<Object, Object> data) {
         var builder = new StringBuilder();
         for (Map.Entry<Object, Object> entry : data.entrySet()) {
             if (builder.length() > 0) {
@@ -63,11 +89,12 @@ public class WowApiClient {
 
     public String getRealms() throws IOException, InterruptedException {
 
+        AccessTokenData accessTokenData = accessTokenRepository.findById(1).get();
         HttpRequest requestRealms = HttpRequest.newBuilder()
             .GET()
                 .setHeader("accept", "application/json")
                 .setHeader("Battlenet-namespace","dynamic-eu")
-                .setHeader("Authorization", "Bearer <TOKEN FROM DB>")
+                .setHeader("Authorization", "Bearer " + accessTokenData.getAccessToken())
                 .setHeader("region", "eu")
             .uri(URI.create(REALM_URI))
             .build();
@@ -82,27 +109,24 @@ public class WowApiClient {
                                 .map(realm -> realm.name.enGB + ": " + realm.id)
                                 .collect(Collectors.joining("<br>"));
 
-        System.out.println(response.statusCode());
-        System.out.println("Stopped");
     return "<b> Joined Realms: </b> <br>" + joinedRealms;
     }
 
     public String getAuction(String connectedRealmId) throws IOException, InterruptedException {
         String AUCTION_URI = "https://eu.api.blizzard.com/data/wow/connected-realm/"+ connectedRealmId +"/auctions";
 
+        AccessTokenData accessTokenData = accessTokenRepository.findById(1).get();
+
         HttpRequest requestAuctions = HttpRequest.newBuilder()
                 .GET()
                 .setHeader("accept", "application/json")
                 .setHeader("Battlenet-namespace","dynamic-eu")
-                .setHeader("Authorization", "Bearer <TOKEN FROM DB>")
+                .setHeader("Authorization", "Bearer " + accessTokenData.getAccessToken())
                 .uri(URI.create(AUCTION_URI))
                 .build();
 
 
         HttpResponse<String> response = httpClient.send(requestAuctions, HttpResponse.BodyHandlers.ofString());
-        System.out.println(response.statusCode());
-        System.out.println(response.request().uri().toString());
-        System.out.println(response.request().headers());
 
         ObjectMapper mapperStringToJson = new ObjectMapper();
         AuctionData auctionData = mapperStringToJson.readValue(response.body(), AuctionData.class);
