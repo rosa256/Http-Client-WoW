@@ -39,7 +39,7 @@ public class WowApiClient {
                 .setHeader("content-type", "application/x-www-form-urlencoded")
                 .uri(URI.create(TOKEN_URI))
                 .build();
-l
+
         HttpResponse<String> response = httpClient.send(requestToken, HttpResponse.BodyHandlers.ofString());
 
         ObjectMapper objectMapper = new ObjectMapper();
