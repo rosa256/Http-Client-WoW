@@ -22,7 +22,7 @@ public class WowApiClient {
 
     private HttpClient httpClient = HttpClient.newHttpClient();
     private static final String REALM_URI = "https://eu.api.blizzard.com/data/wow/realm/index";
-    private static final String TOKEN_URI = "https://us.battle.net/oauth/token";
+    private static final String TOKEN_URI = "https://eu.battle.net/oauth/token";
 
     public String getToken() throws IOException, InterruptedException {
 
@@ -36,9 +36,10 @@ public class WowApiClient {
         HttpRequest requestToken = HttpRequest.newBuilder()
                 .POST(ofFormData(credentialsDataMap))
                 .setHeader("accept", "application/json")
+                .setHeader("content-type", "application/x-www-form-urlencoded")
                 .uri(URI.create(TOKEN_URI))
                 .build();
-
+l
         HttpResponse<String> response = httpClient.send(requestToken, HttpResponse.BodyHandlers.ofString());
 
         ObjectMapper objectMapper = new ObjectMapper();
